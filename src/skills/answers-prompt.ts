@@ -55,7 +55,7 @@ function promptTarget(text: string): boolean {
 }
 
 /** A group or a command that only waits and types: `(sleep 15; printf '\n'; sleep 300)`, `printf 'y\n'`, `yes`. */
-const KEYSTROKES = /^(?:[({]\s*)?(?:(?:sleep\s+[\d.]+|printf\s+(?:'[^']*'|"[^"]*"|\S+)|echo(?:\s+(?:'[^']*'|"[^"]*"|[^\s;&|()]+))*|yes)\s*(?:;\s*|$|(?=[)}])))+(?:[)}]\s*)?$/;
+const KEYSTROKES = /^(?:[({]\s*)?(?:(?:sleep\s+[\d.]+|printf\s+(?:'[^']*'|"[^"]*"|[^\s;&|()'"])+|echo(?:\s+(?:'[^']*'|"[^"]*"|[^\s;&|()'"])+)*|yes)\s*(?:;\s*|$|(?=[)}])))+(?:[)}]\s*)?$/;
 
 /**
  * D116 item 5: the whole call only feeds keystrokes into a login (`(sleep 15; printf '\n'; sleep 300) | script -q
