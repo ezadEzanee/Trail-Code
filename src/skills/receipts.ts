@@ -33,7 +33,7 @@ const ASKED = new Set(['this repo', 'every repo', 'repo', 'team']);
 /** A session id as a file name, as phase 0's state.ts does it: anything odd is hashed. */
 function fileId(sessionId: string): string {
   if (/^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$/.test(sessionId)) return sessionId;
-  return `h-${createHash('sha1').update(String(sessionId)).digest('hex').slice(0, 16)}`;
+  return `h-${createHash('sha256').update(String(sessionId)).digest('hex').slice(0, 16)}`;
 }
 
 const receiptsDir = (env?: NodeJS.ProcessEnv) => trailPath(env, 'receipts');

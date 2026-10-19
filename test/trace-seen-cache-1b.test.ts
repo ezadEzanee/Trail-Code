@@ -10,7 +10,7 @@ import { keepSeen, takeSeenSet } from '../src/trace/seen-cache.js';
 
 const HEX = 10;
 const MAX = 6000;
-const h = (i: number) => createHash('sha1').update(`key-${i}`).digest('hex').slice(0, HEX);
+const h = (i: number) => createHash('sha256').update(`key-${i}`).digest('hex').slice(0, HEX);
 const parse = (s: string) => new Set(s.match(/.{10}/g) ?? []);
 const cpuMs = (fn: () => void) => {
   const a = process.cpuUsage();

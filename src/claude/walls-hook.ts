@@ -114,7 +114,7 @@ export function countedHits(run: RunState): RunCall[] {
 
 /** `timeout [-s SIG] [-k 5] [--foreground] 60 npm test` without its timeout part: `npm test`; null when there is none. */
 export function withoutTimeout(cmd: string | null): string | null {
-  const m = cmd ? /^\s*(?:\S*\/)?timeout(?:\s+(?:-[sk]\s+\S+|-\S+|--\S+))*\s+\d[\d.]*[smhd]?\s+(\S.*)$/s.exec(cmd) : null;
+  const m = cmd ? /^\s*(?:\S*\/)?timeout(?:\s+(?:-[sk]\s+\S+|-(?![sk]\s)\S+))*\s+\d[\d.]*[smhd]?\s+(\S.*)$/s.exec(cmd) : null;
   return m ? m[1]! : null;
 }
 

@@ -87,10 +87,10 @@ export function freshRunId(now: Date, taken: (id: string) => boolean): string {
   return id;
 }
 
-/** What `st.seen` keeps (D56d): 10 hex of sha1 per key, the newest 6,000. */
+/** What `st.seen` keeps (D56d): 10 hex of sha256 per key, the newest 6,000. */
 const SEEN_HEX = 10;
 const SEEN_MAX = 6000;
-const seenHash = (key: string) => createHash('sha1').update(key).digest('hex').slice(0, SEEN_HEX);
+const seenHash = (key: string) => createHash('sha256').update(key).digest('hex').slice(0, SEEN_HEX);
 
 /** toolCalls >= 5 or failedCount >= 1. */
 export function costly(run: RunState): boolean {

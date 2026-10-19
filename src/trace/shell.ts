@@ -168,7 +168,7 @@ const FIND_ACTS = /^-(?:delete|exec|execdir|ok|okdir|fprint0?|fprintf|fls)$/;
  * run, but change nothing, so they are looks (on the program words, wrappers gone; a file redirect still
  * makes them work).
  */
-const INFO = /^(?:date|uname|hostname|sw_vers|whoami|id|uptime|nproc|ps|pgrep|lsof|vm_stat|printenv|sysctl|seq|tr|sort(?![^|;&]*\s-\w*o)|uniq|cut|awk|column|paste|comm|nl|diff|cmp|basename|dirname|realpath|readlink|od|xxd|strings|xargs echo|git (?:rev-list|for-each-ref|name-rev|ls-tree)|docker (?:ps|images|inspect|logs|version|context (?:ls|inspect|show))|colima (?:status|list|ls)|kubectl (?:get|describe|logs)|npm config get|git config --get|brew (?:list|info)|open(?!\s+-[aAbe]\b)|gh (?:repo|release) (?:list|view)|gh api(?![^|;&]*\s(?:-X|--method|-f|-F|--field|--raw-field|--input)\b))(?:\s|$)|^(?:npx(?:\s+--?[\w-]+)*\s+)?[\w.@/+-]+(?: [\w-]+)? (?:--version|-v|-V|version|--help|-h|help)(?:\s+\d?>>?&?\s*\S+)*$/;
+const INFO = /^(?:date|uname|hostname|sw_vers|whoami|id|uptime|nproc|ps|pgrep|lsof|vm_stat|printenv|sysctl|seq|tr|sort(?![^|;&]*\s-\w*o)|uniq|cut|awk|column|paste|comm|nl|diff|cmp|basename|dirname|realpath|readlink|od|xxd|strings|xargs echo|git (?:rev-list|for-each-ref|name-rev|ls-tree)|docker (?:ps|images|inspect|logs|version|context (?:ls|inspect|show))|colima (?:status|list|ls)|kubectl (?:get|describe|logs)|npm config get|git config --get|brew (?:list|info)|open(?!\s+-[aAbe]\b)|gh (?:repo|release) (?:list|view)|gh api(?![^|;&]*\s(?:-X|--method|-f|-F|--field|--raw-field|--input)\b))(?:\s|$)|^(?:npx(?:\s+-[\w-]+)*\s+)?[\w.@/+-]+(?: [\w-]+)? (?:--version|-v|-V|version|--help|-h|help)(?:\s+\d?>>?&?\s*[^\s&>]\S*)*$/;
 
 /**
  * A segment's kind on its own: plumbing, work, look or step. A top-level redirect into a file turns

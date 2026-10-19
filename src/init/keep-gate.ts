@@ -93,7 +93,7 @@ export function pendingNames(r: InitRecord, env: NodeJS.ProcessEnv): Array<{ n: 
 }
 
 const fileId = (sessionId: string) =>
-  /^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$/.test(sessionId) ? sessionId : `h-${createHash('sha1').update(sessionId).digest('hex').slice(0, 16)}`;
+  /^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$/.test(sessionId) ? sessionId : `h-${createHash('sha256').update(sessionId).digest('hex').slice(0, 16)}`;
 
 /** receipts/<session-id>.keep.json */
 export function keepReceiptPath(sessionId: string, env?: NodeJS.ProcessEnv): string {

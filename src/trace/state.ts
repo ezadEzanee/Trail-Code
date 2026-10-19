@@ -67,7 +67,7 @@ export function writePrivateJson(path: string, value: unknown): void {
  */
 function fileId(sessionId: string): string {
   if (/^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$/.test(sessionId)) return sessionId;
-  return `h-${createHash("sha1").update(String(sessionId)).digest("hex").slice(0, 16)}`;
+  return `h-${createHash("sha256").update(String(sessionId)).digest("hex").slice(0, 16)}`;
 }
 
 /** `~/.trail/sessions/<id>.json`; the folder exists (0700) once this returns, when it can be made. */

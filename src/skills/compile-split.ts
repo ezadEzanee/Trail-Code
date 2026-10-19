@@ -143,7 +143,7 @@ function writeIn(text: string, vars: Map<string, string>): string {
 function groupInside(s: string, l: Link): { inner: string; subshell: boolean } | null {
   const g = l.pieces[0]!.group;
   if (!g || g.close < 0 || l.pieces[0]!.bodies.length) return null;
-  if (!/^\s*(?:\d?>>?&?\s*\S+\s*)*$/.test(s.slice(g.close + 1, l.pieces[0]!.end))) return null;
+  if (!/^\s*(?:\d?>>?&?\s*[^\s&>]\S*(?:\s+|$))*$/.test(s.slice(g.close + 1, l.pieces[0]!.end))) return null;
   const filters = l.pieces.slice(1).every((p) => /^(?:tail|head|grep|cat|sed -n|cut|sort|uniq|wc|tr|tee)\b/.test(s.slice(p.start, p.end).trim()));
   if (!filters || (l.pieces.length > 1 && l.pieces[0]!.sep !== '|')) return null;
   return { inner: s.slice(g.open + 1, g.close), subshell: s[g.open] === '(' };

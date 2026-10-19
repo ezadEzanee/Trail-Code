@@ -212,7 +212,7 @@ export function gateFilePathFast(input: Record<string, unknown>, env: NodeJS.Pro
   const path = process.getBuiltinModule('node:path') as typeof Path;
   const os = process.getBuiltinModule('node:os') as typeof Os;
   const crypto = process.getBuiltinModule('node:crypto') as typeof Crypto;
-  const id = /^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$/.test(raw) ? raw : `h-${crypto.createHash('sha1').update(raw).digest('hex').slice(0, 16)}`;
+  const id = /^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$/.test(raw) ? raw : `h-${crypto.createHash('sha256').update(raw).digest('hex').slice(0, 16)}`;
   const home = env.TRAIL_HOME ? path.resolve(env.TRAIL_HOME) : path.join(os.homedir(), '.trail');
   return path.join(home, 'sessions', `${id}.gate.json`);
 }

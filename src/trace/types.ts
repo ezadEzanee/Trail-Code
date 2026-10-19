@@ -303,7 +303,7 @@ export interface SkillSessionState {
   updatedAt: string;
   /**
    * What was already folded, so a block of history the transcript repeats, or a transcript read again from
-   * the top, folds once (D56d): 10 hex of sha1 per tool_use id, typed line and compaction line, concatenated,
+   * the top, folds once (D56d): 10 hex of sha256 per tool_use id, typed line and compaction line, concatenated,
    * oldest first, at most 6,000. Never an id in the clear.
    */
   seen?: string;

@@ -47,7 +47,7 @@ export function argsAfter(text: string, from: number, until = text.length): stri
 export const word = (name: string) => new RegExp(String.raw`(?<![\w./-])(?:[\w./-]*\/)?${name}(?=\s|$)`, 'g');
 
 const PROD = new Set(['main', 'master', 'prod', 'production']);
-const GIT_PUSH = /(?<![\w./-])(?:[\w./-]*\/)?git((?:\s+(?:-C|-c|--git-dir|--work-tree|--namespace)(?:\s+|=)\S+|\s+--?[\w-]+(?:=\S+)?)*)\s+push(?=\s|$|[;&|)'"])/g;
+const GIT_PUSH = /(?<![\w./-])(?:[\w./-]*\/)?git((?:\s+(?:-C|-c|--git-dir|--work-tree|--namespace)\s+\S+|\s+(?!(?:-C|-c|--git-dir|--work-tree|--namespace)\s)-[\w-]+(?:=\S+)?)*)\s+push(?=\s|$|[;&|)'"])/g;
 
 /** One `git push`: forced or not, where it went (`<current>` for the checked-out branch, `<unknown>` for a variable or {param}, `<all>`), and from what. */
 export interface Push { force: boolean; dsts: string[]; srcs: string[] }
