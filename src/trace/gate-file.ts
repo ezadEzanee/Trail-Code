@@ -64,7 +64,7 @@ export function trailHomeFast(env: NodeJS.ProcessEnv = process.env): string {
 /** A session id as a file name, as phase 0's state.ts does it (a test holds them equal). */
 function fileId(sessionId: string): string {
   if (/^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$/.test(sessionId)) return sessionId;
-  return `h-${crypto().createHash('sha1').update(String(sessionId)).digest('hex').slice(0, 16)}`;
+  return `h-${crypto().createHash('sha256').update(String(sessionId)).digest('hex').slice(0, 16)}`;
 }
 
 /** `<home>/sessions/<id><suffix>`: the session's files (`.json`, `.gate.json`, `.post.jsonl`). */

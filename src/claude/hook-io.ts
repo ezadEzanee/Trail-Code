@@ -128,5 +128,5 @@ export function payloadSessionId(input: unknown): string {
   const raw = [p.session_id, p.sessionId, p.conversation_id].find((v): v is string => typeof v === 'string' && v !== '');
   if (raw === undefined) return 'default';
   if (/^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$/.test(raw)) return raw;
-  return `h-${createHash('sha1').update(raw).digest('hex').slice(0, 16)}`;
+  return `h-${createHash('sha256').update(raw).digest('hex').slice(0, 16)}`;
 }
