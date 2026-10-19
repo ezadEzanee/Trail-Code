@@ -5,14 +5,16 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   EVENTS,
+  VALUES,
   countBucket,
   durationBucket,
   errorCode,
   filesBucket,
+  hookMsBucket,
   isTrackedCommand,
   langsValue,
   savedTokensBucket,
@@ -75,11 +77,121 @@ test('every event carries the common properties, and no identifier beyond them',
 
 // Pinned rather than counted, so adding an event is a deliberate edit here and
 // a matching row in TELEMETRY.md, never something that arrives with a feature.
-test('the contract lists exactly the sixteen documented events', () => {
+test('the contract lists exactly the twenty-five documented events', () => {
   assert.deepEqual(Object.keys(EVENTS).sort(), [
     'brain_signup_opened', 'brain_signup_settled', 'build_completed', 'build_failed',
-    'cold_start', 'first_run', 'init_completed', 'install', 'learning_reused', 'learnings_committed', 'note_saved', 'query', 'repo_seen', 'session_summary', 'skills_folded', 'takeaway_saved',
+    'cold_start', 'first_run', 'guardrail', 'hook_ms', 'init_completed', 'install', 'learnings_committed', 'note_saved', 'query', 'repo_seen', 'session_summary',
+    'skill_answer', 'skill_changed', 'skill_offered', 'skill_promoted', 'skill_saved', 'skill_stale', 'skill_used', 'skill_value', 'team_pull', 'wall_hit',
   ]);
+});
+
+// --- the skills events (spec section 20): counts and closed sets, never content ---
+
+/** Each skills event with the keys it may carry, as the spec lists them. */
+const SKILL_EVENTS: Record<string, string[]> = {
+  skill_offered: ['moment'],
+  skill_answer: ['answer'],
+  skill_saved: ['from', 'scope'],
+  skill_changed: ['op'],
+  skill_value: ['channel'],
+  skill_promoted: ['to'],
+  team_pull: ['outcome'],
+  skill_used: ['outcome'],
+  skill_stale: ['reason'],
+  guardrail: ['class', 'outcome'],
+  wall_hit: ['class', 'had_lesson'],
+  hook_ms: ['event', 'bucket'],
+};
+
+test('learning_reused is gone: it counted learnings before they were deduped', () => {
+  const home = sandbox('tel-no-reuse');
+  assert.equal(track('learning_reused', { teammate: 'true', saved_tokens_bucket: '1-5k' }, { home, env: OPEN }), null);
+  assert.equal(track('takeaway_saved', { new_skill: 'true' }, { home, env: OPEN }), null, 'trail learn is gone, and its event with it');
+  assert.doesNotMatch(readFileSync(join(process.cwd(), 'src', 'cli.ts'), 'utf8'), /learning_reused/);
+});
+
+test('each skills event carries exactly the keys the spec lists, and every key has a closed set of values', () => {
+  for (const [event, keys] of Object.entries(SKILL_EVENTS)) {
+    assert.deepEqual([...EVENTS[event]!].sort(), [...keys].sort(), event);
+    for (const k of keys) assert.ok(VALUES[event]?.[k]?.size, `${event}.${k} has no closed set`);
+  }
+  assert.deepEqual([...VALUES.skill_answer!.answer!].sort(), ['no', 'none', 'off', 'retire', 'show', 'yes']);
+  assert.deepEqual([...VALUES.skill_saved!.scope!].sort(), ['personal', 'repo', 'team']);
+  assert.deepEqual([...VALUES.skill_promoted!.to!].sort(), ['repo', 'team']);
+  assert.deepEqual([...VALUES.skill_used!.outcome!].sort(), ['checked', 'failed', 'unchecked']);
+  assert.deepEqual([...VALUES.wall_hit!.had_lesson!].sort(), ['false', 'true']);
+});
+
+test('a skills event drops content-like keys: names, titles, steps, commands, prompts and paths never go', () => {
+  const home = sandbox('tel-skill-content-keys');
+  const content = {
+    name: 'release-npm',
+    title: 'Release to npm',
+    description: 'Publishes the package to npm',
+    steps: 'git pull --ff-only origin main',
+    command: 'npm publish',
+    prompt: 'pull and publish 0.22.1',
+    text: 'you forgot to push the tag',
+    path: '/home/dev/acme/.agents/skills/release-npm/SKILL.md',
+    repo: 'acme/api',
+    skill: 'release-npm',
+    lesson: 'push the tag first',
+  };
+  for (const [event, keys] of Object.entries(SKILL_EVENTS)) {
+    const legal = Object.fromEntries(keys.map((k) => [k, [...VALUES[event]![k]!][0]!]));
+    const ev = track(event, { ...content, ...legal }, { home, env: OPEN });
+    assert.ok(ev, event);
+    for (const k of Object.keys(content)) assert.equal(Object.hasOwn(ev.properties, k), false, `${event} kept ${k}`);
+    for (const k of keys) assert.equal(ev.properties[k], legal[k], `${event}.${k}`);
+    const wire = JSON.stringify(ev);
+    for (const v of Object.values(content)) assert.equal(wire.includes(v), false, `${event} carried "${v}"`);
+  }
+});
+
+test('a skills event drops a value outside its closed set, even under an allowed key', () => {
+  const home = sandbox('tel-skill-content-values');
+  const offered = track('skill_offered', { moment: 'pull and publish 0.22.1' }, { home, env: OPEN });
+  assert.ok(offered);
+  assert.equal(Object.hasOwn(offered.properties, 'moment'), false, 'a prompt is not a moment');
+  const used = track('skill_used', { outcome: 'release-npm' }, { home, env: OPEN });
+  assert.equal(Object.hasOwn(used!.properties, 'outcome'), false, 'a skill name is not an outcome');
+  const wall = track('wall_hit', { class: 'npm ERR! code E401 /home/dev/.npmrc', had_lesson: 'true' }, { home, env: OPEN });
+  assert.equal(Object.hasOwn(wall!.properties, 'class'), false, 'error text is not a class');
+  assert.equal(wall!.properties.had_lesson, 'true');
+  const ms = track('hook_ms', { event: 'prompt', bucket: '137' }, { home, env: OPEN });
+  assert.equal(ms!.properties.event, 'prompt');
+  assert.equal(Object.hasOwn(ms!.properties, 'bucket'), false, 'a raw number is not a bucket');
+  assert.equal(track('hook_ms', { event: 'prompt', bucket: hookMsBucket(137) }, { home, env: OPEN })!.properties.bucket, '100-300ms');
+});
+
+test('no event in the contract has a key that names content', () => {
+  const contentKeys = /^(name|title|text|body|prompt|query|path|file|files|steps?|skill|lesson|description|message|error|url|repo|remote|branch)$/;
+  for (const [event, keys] of Object.entries(EVENTS)) for (const k of keys) assert.doesNotMatch(k, contentKeys, `${event}.${k}`);
+});
+
+test('hookMsBucket collapses a hook time to a label', () => {
+  assert.equal(hookMsBucket(0), '<50ms');
+  assert.equal(hookMsBucket(49), '<50ms');
+  assert.equal(hookMsBucket(50), '50-100ms');
+  assert.equal(hookMsBucket(299), '100-300ms');
+  assert.equal(hookMsBucket(300), '300ms-1s');
+  assert.equal(hookMsBucket(2999), '1-3s');
+  assert.equal(hookMsBucket(60_000), '3s+');
+});
+
+// TELEMETRY.md is the published contract: an event or key it doesn't list must not be sendable.
+test('TELEMETRY.md lists every event and every key the contract allows, and no event the contract lacks', () => {
+  const doc = readFileSync(join(process.cwd(), 'TELEMETRY.md'), 'utf8');
+  const rows = new Map<string, string>();
+  for (const line of doc.split('\n')) {
+    const m = /^\| `([a-z_]+)` \|(.*)$/.exec(line);
+    if (m && !['app_version', 'os', 'arch', 'node_major', 'ci', 'agent_host', 'cli_name', 'repo_id'].includes(m[1]!)) rows.set(m[1]!, m[2]!);
+  }
+  assert.deepEqual([...rows.keys()].sort(), Object.keys(EVENTS).sort());
+  for (const [event, keys] of Object.entries(EVENTS)) {
+    for (const k of keys) assert.ok(rows.get(event)!.includes(`\`${k}\``), `TELEMETRY.md's ${event} row doesn't name ${k}`);
+    for (const [k, values] of Object.entries(VALUES[event] ?? {})) for (const v of values) assert.ok(rows.get(event)!.includes(`\`${v}\``), `TELEMETRY.md's ${event} row doesn't name ${k} value ${v}`);
+  }
 });
 
 test('only the known commands are tracked', () => {

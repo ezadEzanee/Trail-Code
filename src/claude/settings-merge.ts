@@ -34,6 +34,19 @@ const REPO_HELPERS = '${CLAUDE_PROJECT_DIR:-.}/.claude/helpers';
 function hookCmd(arg: string, helpers: string = REPO_HELPERS, name: 'graft' | 'trail' = 'graft'): string {
   return `node "${helpers}/${name}-hooks.cjs" ${arg}`;
 }
+
+/**
+ * A hook command that exits 0 whatever happens to it (every event since D116 item 6; PreToolUse first, for this). Copilot CLI reads
+ * the repo's `.claude/settings.json` and denies the tool call when a
+ * PreToolUse hook exits non-zero, so a shim that can't be found (a host
+ * started in a subfolder without CLAUDE_PROJECT_DIR, the shim gone after an
+ * uninstall) or a missing node would deny every shell command. `|| exit 0`
+ * means the same in sh and Windows cmd. The hook's answer travels as JSON on
+ * stdout, never as an exit code, so nothing is lost by it.
+ */
+export function failOpen(command: string): string {
+  return `${command} || exit 0`;
+}
 /** trail's committed hook, `.trail/hook.cjs`, run for one event. */
 export function trailHookCmd(arg: string): string {
   return `node "\${CLAUDE_PROJECT_DIR:-.}/.trail/hook.cjs" ${arg}`;
@@ -41,10 +54,21 @@ export function trailHookCmd(arg: string): string {
 function graftBlocks(helpers?: string, name: 'graft' | 'trail' = 'graft'): Record<string, Json[]> {
   return hookBlocks((arg) => hookCmd(arg, helpers, name));
 }
-function hookBlocks(hookCmd_: (arg: string) => string): Record<string, Json[]> {
+/**
+ * Every hook event, each running `command(<event arg>)`.
+ *
+ * Every `timeout` here is in seconds: Claude Code and Codex read it that way.
+ * Versions before 0.23 wrote 8000-15000 meaning milliseconds, which the host
+ * read as hours; merging again replaces them. The prompt hook also keeps to a
+ * hard budget of its own (prompt-hook.ts PROMPT_BUDGET_MS), well inside this.
+ */
+function hookBlocks(command: (arg: string) => string): Record<string, Json[]> {
+  // D116 item 6: every event fails open, not only PreToolUse: a `git stash -u` or `git clean` before the wiring is
+  // committed takes the untracked shim while settings.json still names it, and a missing shim must stay quiet.
+  const hookCmd_ = (arg: string) => failOpen(command(arg));
   return {
     PostToolUse: [
-      { matcher: 'Write|Edit|MultiEdit', hooks: [{ type: 'command', command: hookCmd_('post-edit'), timeout: 10000 }] },
+      { matcher: 'Write|Edit|MultiEdit', hooks: [{ type: 'command', command: hookCmd_('post-edit'), timeout: 10 }] },
       // Score the usage mix and sum token savings. A graft retrieval (CLI `graft …`
       // via Bash, or the `graft_*` MCP tools) prints a `[graft] tokens saved ≈ N`
       // footer this hook sums into the session total; the same hook classifies
@@ -52,22 +76,27 @@ function hookBlocks(hookCmd_: (arg: string) => string): Record<string, Json[]> {
       // `graft stats` and the `session_summary` graft-vs-grep ratio. Broad matcher,
       // but the handler no-ops instantly unless there is something to record, so an
       // unrelated Bash or a plain Read costs only a stdin read.
-      { matcher: 'Bash|mcp__graft__|mcp__trail__|Read|Grep|Glob', hooks: [{ type: 'command', command: hookCmd_('tool-savings'), timeout: 8000 }] },
+      { matcher: 'Bash|mcp__graft__|mcp__trail__|Read|Grep|Glob', hooks: [{ type: 'command', command: hookCmd_('tool-savings'), timeout: 8 }] },
     ],
-    // Longer budget than the other hooks: its `graft ask` is a real query, and a
-    // query now brings the graph up to date first (graph/refresh.ts) — usually
-    // milliseconds, but the first one after an upgrade re-parses the repo once.
-    // `hooks.ts` reads this number back out of the installed settings.json at
-    // runtime and caps its `graft ask` child just under it, so a repo wired before
-    // this bump (8s) keeps a child that fits inside 8s. Changing the number here is
-    // therefore safe on its own — but it only reaches an existing repo when someone
-    // re-runs `graft init`, since that is the only caller of this function.
-    UserPromptSubmit: [{ hooks: [{ type: 'command', command: hookCmd_('prompt'), timeout: 15000 }] }],
-    SessionStart: [{ hooks: [{ type: 'command', command: hookCmd_('session-start'), timeout: 8000 }] }],
-    Stop: [{ hooks: [{ type: 'command', command: hookCmd_('stop'), timeout: 8000 }] }],
+    // Longer than the other hooks: its `graft ask` is a real query, and a query
+    // brings the graph up to date first (graph/refresh.ts). The hook itself
+    // stops at its own total budget (PROMPT_BUDGET_MS) and reads this number
+    // back (promptAskTimeout) so its ask child always fits inside it.
+    UserPromptSubmit: [{ hooks: [{ type: 'command', command: hookCmd_('prompt'), timeout: 15 }] }],
+    // Before every shell command: pre-bash.js, which fails open, behind a
+    // command that fails open too (see failOpen). Claude Code reads `timeout`
+    // in seconds, so 5 caps the wait a wedged hook could add to one command,
+    // after which the command runs anyway.
+    PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: hookCmd_('pre-bash'), timeout: 5 }] }],
+    // A Bash call that failed fires this, never PostToolUse (D34): learned
+    // skills mark the outcome for the next catch-up. Fails open like
+    // PreToolUse, since some hosts read a non-zero exit as a refusal.
+    PostToolUseFailure: [{ matcher: 'Bash', hooks: [{ type: 'command', command: hookCmd_('post-bash-fail'), timeout: 5 }] }],
+    SessionStart: [{ hooks: [{ type: 'command', command: hookCmd_('session-start'), timeout: 10 }] }],
+    Stop: [{ hooks: [{ type: 'command', command: hookCmd_('stop'), timeout: 10 }] }],
     // Sends the telemetry queue in a detached child, so closing Claude isn't
     // slowed. Not fired when the terminal is killed; session start sends what's left.
-    SessionEnd: [{ hooks: [{ type: 'command', command: hookCmd_('session-end'), timeout: 5000 }] }],
+    SessionEnd: [{ hooks: [{ type: 'command', command: hookCmd_('session-end'), timeout: 5 }] }],
   };
 }
 /**
@@ -236,7 +265,7 @@ export function mergeTrailShared(existing: Json): Json {
   merged.hooks = { ...(merged.hooks ?? {}) };
   merged.hooks.SessionStart = [
     ...(Array.isArray(merged.hooks.SessionStart) ? merged.hooks.SessionStart : []),
-    { hooks: [{ type: 'command', command: trailHookCmd('session-start'), timeout: 8000 }] },
+    ...hookBlocks(trailHookCmd).SessionStart!,
   ];
   return merged;
 }

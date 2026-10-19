@@ -176,10 +176,11 @@ test("trail --help groups the commands, and lists the workspace ones only once s
   const home = scratchHome();
   const r = run("trail", ["--help"], home);
   assert.equal(r.status, 0);
-  for (const heading of ["Find code", "Team memory:", "Setup:", "CI:"]) assert.ok(r.out.includes(heading), heading);
-  for (const c of ["note", "check", "team", "status"]) assert.match(r.out, new RegExp(`^  ${c} `, "m"), c);
-  // Still run, just not listed: the brain's rules, corrections on skills, and signing in.
-  for (const c of ["viz", "mcp", "stats", "watch", "connect", "trail", "push", "pull", "learn", "skills", "workspace", "login", "logout"])
+  for (const heading of ["Find code", "Learnings:", "Setup:", "CI:"]) assert.ok(r.out.includes(heading), heading);
+  assert.doesNotMatch(r.out, /\bmemory\b/i, "learnings, never memory");
+  for (const c of ["note", "check", "team", "skills", "status"]) assert.match(r.out, new RegExp(`^  ${c} `, "m"), c);
+  // Still run, just not listed: the brain's commands, skills' undo (also under trail skills), and signing in.
+  for (const c of ["viz", "mcp", "stats", "watch", "connect", "trail", "push", "pull", "learn", "forget", "workspace", "login", "logout"])
     assert.doesNotMatch(r.out, new RegExp(`^  ${c} `, "m"), c);
   const on = run("trail", ["--help"], home, process.cwd(), { TRAIL_CLOUD: "1" });
   assert.ok(on.out.includes("Workspace"));

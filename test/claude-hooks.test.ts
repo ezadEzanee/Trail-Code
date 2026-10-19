@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { underGraft, main, lastFileScopeHint, promptAskTimeout } from '../src/claude/hooks.js';
@@ -36,10 +36,20 @@ test('post-edit ignores edits inside graft/', async () => {
   assert.equal(readStats(d), null, 'no state written for graft/ edits');
 });
 
-// helper: hooks.ts reads process.env.GRAFT_TEST_STDIN first (test seam), else fd 0.
+// helper: hooks.ts reads process.env.GRAFT_TEST_STDIN first (test seam), else fd 0. A Trail home of the test's own
+// when none is set (b7 review): session start reads every-repo learnings and names, once, what trail init kept,
+// which must never reach the real ~/.trail.
 async function runWithStdin(text: string, fn: () => Promise<void>): Promise<void> {
   process.env.GRAFT_TEST_STDIN = text;
-  try { await fn(); } finally { delete process.env.GRAFT_TEST_STDIN; }
+  const ownHome = process.env.TRAIL_HOME === undefined;
+  if (ownHome) process.env.TRAIL_HOME = mkdtempSync(join(tmpdir(), 'graft-hooks-trail-'));
+  try { await fn(); } finally {
+    delete process.env.GRAFT_TEST_STDIN;
+    if (ownHome) {
+      rmSync(process.env.TRAIL_HOME!, { recursive: true, force: true });
+      delete process.env.TRAIL_HOME;
+    }
+  }
 }
 
 test('post-edit-sync marks dirty and kicks off the background sync', async () => {
@@ -375,7 +385,7 @@ test('prompt branch stays silent and writes no session when graft is not built',
   process.env.CLAUDE_PROJECT_DIR = d;
   const chunks: string[] = [];
   const orig = process.stdout.write.bind(process.stdout);
-  (process.stdout as any).write = (s: any) => { chunks.push(String(s)); return true; };
+  (process.stdout as any).write = (s: any, ...rest: any[]) => (typeof s === 'string' ? (chunks.push(s), true) : orig(s, ...rest));
   try {
     await runWithStdin(
       JSON.stringify({ session_id: 'p1', prompt: 'how does pkce verification work' }),
@@ -741,7 +751,7 @@ test('session-start reads INDEX.md from a GRAFT_DIR-relocated context dir', asyn
   process.env.GRAFT_DIR = 'elsewhere';
   const chunks: string[] = [];
   const orig = process.stdout.write.bind(process.stdout);
-  (process.stdout as any).write = (s: any) => { chunks.push(String(s)); return true; };
+  (process.stdout as any).write = (s: any, ...rest: any[]) => (typeof s === 'string' ? (chunks.push(s), true) : orig(s, ...rest));
   try {
     await runWithStdin('{}', () => main('session-start'));
   } finally {

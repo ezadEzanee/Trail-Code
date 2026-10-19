@@ -15,9 +15,10 @@
  *     without a path.
  *   • non-string values → dropped. Everything that crosses the wire is a bucket
  *     label or an enum member, so a raw count or a raw message cannot get out
- *     even under a key that happens to be allowed.
+ *     even under a key that happens to be allowed. Where the contract fixes a
+ *     key's values (`VALUES`), a value outside them is dropped too.
  */
-import { EVENTS } from './contract.js';
+import { EVENTS, allowedValue } from './contract.js';
 import type { AgentHost } from './contract.js';
 import { enqueue } from './queue.js';
 import { telemetryOn } from './gate.js';
@@ -103,7 +104,7 @@ export function track(
 
     const properties = commonProps(ctx);
     for (const [k, v] of Object.entries(props)) {
-      if (allowed.has(k) && typeof v === 'string') properties[k] = v;
+      if (allowed.has(k) && typeof v === 'string' && allowedValue(event, k, v)) properties[k] = v;
     }
 
     const queued: QueuedEvent = {

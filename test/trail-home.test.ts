@@ -265,3 +265,20 @@ test("paths under the home folder read as ~/", () => {
   assert.equal(shownPath("/srv/elsewhere"), "/srv/elsewhere");
   assert.equal(shownPath("notes/a.md"), "notes/a.md");
 });
+
+test("noteCount counts only live learnings: not retired, held or replaced ones", () => {
+  const env = home();
+  const d = repo("count-live", "git@github.com:acme/api.git");
+  const dir = join(d, ".trail", "learnings");
+  mkdirSync(dir, { recursive: true });
+  const file = (name: string, extra = "", date = "2026-10-08") => writeFileSync(join(dir, name), `---\ntitle: "${name}"\nauthor: Priya\ndate: ${date}\n${extra}---\n\n${BODY}\n`);
+  file("2026-10-08-active-priya.md");
+  file("2026-10-08-retired-priya.md", "status: retired\n");
+  file("2026-10-08-held-priya.md", "status: held\n");
+  file("2026-10-08-old-priya.md", "id: l-0a0a0a0a\n");
+  file("2026-10-09-new-priya.md", "id: l-0b0b0b0b\nreplaces: l-0a0a0a0a\n", "2026-10-09");
+  writeFileSync(join(dir, "README.md"), "not a learning\n");
+  assert.equal(noteCount(d, env), 2, "the active one and the one that replaced the old one");
+  writeNote(d, { title: "Mine", body: BODY, author: "Priya", date: "2026-10-10" }, "personal");
+  assert.equal(noteCount(d, env), 3);
+});

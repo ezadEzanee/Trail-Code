@@ -29,6 +29,7 @@ import type { PlannedWrite } from './plan.js';
 import { writeOwned, isGraftEntry, readJsonObject, type ConfigWrite } from './config-write.js';
 import { cursorHookShimRelPath } from './registry.js';
 import type { Brand } from '../brand.js';
+import { failOpen } from '../claude/settings-merge.js';
 
 /** The Cursor hooks.json schema version graft writes. */
 const CURSOR_HOOKS_VERSION = 1;
@@ -103,7 +104,8 @@ export function installCursorHooks(repo: string, name: Brand = 'graft'): ConfigW
   for (const d of desiredEntries()) {
     if (hooks[d.event] !== undefined && !Array.isArray(hooks[d.event])) return [shimWrite, skipped];
     const prior: unknown[] = Array.isArray(hooks[d.event]) ? hooks[d.event] : [];
-    const command = `node "${shimPath}" ${d.sub}`;
+    // D116 item 6: fails open, like every Trail hook command, so a missing shim never shows a hook error.
+    const command = failOpen(`node "${shimPath}" ${d.sub}`);
     const entry = d.matcher ? { matcher: d.matcher, command } : { command };
     hooks[d.event] = [...prior.filter((e) => !isGraftEntry(e)), entry];
   }

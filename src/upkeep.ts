@@ -307,9 +307,8 @@ export function formatWiringRefresh(r: WiringRefresh | null): string | null {
   // Said to the agent at session start, which is who can tell the person.
   if (r.switched)
     return (
-      `[trail] graft is now trail, and this repo just moved to it: the same commands under the new name, plus learnings in .trail/learnings/ that the whole team shares. ` +
-      `trail is reading the user's past Claude sessions here in the background, and what it learns is there from the next session. ` +
-      `Tell the user this once, in a line at the end of your first reply, and that committing .trail/ and .claude/settings.json once moves their team over too.`
+      `[trail] graft is now trail, and this repo just moved to it: the same commands under the new name, plus learnings in .trail/learnings/ for everyone working in this repo. ` +
+      `Tell the user this once, in a line at the end of your first reply, and that committing .trail/ and .claude/settings.json once moves the repo over for everyone working in it.`
     );
   // Name the out-of-repo writes explicitly: those are machine-wide and shared by
   // every repo, so a user seeing this line should not have to guess what moved.

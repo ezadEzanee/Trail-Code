@@ -7,6 +7,7 @@
 import { relative, dirname, sep } from 'node:path';
 import type { HostPlan, PlannedWrite } from './hosts/plan.js';
 import { brand } from './brand.js';
+import { flatLine } from './notes/flatten.js';
 
 const indigo = (s: string) => `\x1b[38;2;84;111;255m${s}\x1b[0m`;
 const muted = (s: string) => `\x1b[38;5;244m${s}\x1b[0m`;
@@ -278,7 +279,7 @@ export function renderPicker(state: PickerState, tty = true, opts: { title?: str
   // rows carry the '(not detected)' tag or the cursor's colour codes.
   const label = (r: PickerRow) => `${r.label}${r.detected || r.kind === 'setting' ? '' : ' (not detected)'}`;
   const width = Math.max(...visible.filter((r) => r.kind === 'host').map((r) => label(r).length), 12);
-  const title = opts.title === undefined ? `${brand()} init — pick the agents your team uses:` : opts.title;
+  const title = opts.title === undefined ? `${brand()} init · pick the agents your team uses:` : opts.title;
   const lines = title ? [title, ''] : [];
   let ruled = false;
   const foldLine = () => {
@@ -407,27 +408,27 @@ async function drivePicker(initial: PickerState, title?: string | null): Promise
   }
 }
 
-/** One thing `trail init` found the person kept telling Claude, or reviewers kept flagging, as the picker shows it. */
+/** One thing `trail init` offers to keep, as the picker shows it: what it says, how often and where it goes, and whether it starts ticked. */
 export interface LearningChoice {
   title: string;
-  forTeam: boolean;
-  /** Past sessions it was said in. */
-  sessions?: number;
-  /** Merged PRs reviewers flagged it on, for one from PR reviews. */
-  prs?: number;
+  /** "you said it on 4 days · just for you, in this repo" */
+  summary: string;
+  /** Only a preference in the person's own typed words starts ticked; nothing Claude or a reviewer drafted does. */
+  ticked: boolean;
 }
 
-/** One row per learning init found, every one ticked: the person unticks what Claude shouldn't follow. */
+/** One row per item init offers, ticked only where init says so: the person ticks what Claude should follow. */
 export function learningsPickerState(items: LearningChoice[]): PickerState {
   const rows: PickerRow[] = items.map((it, i) => ({
     id: String(i),
-    label: it.title,
+    // Found by reading past sessions and other people's PR reviews: one line each.
+    label: flatLine(it.title),
     kind: 'host' as const,
     detected: true,
     hasGlobal: false,
-    summary: `${it.forTeam ? 'for your team' : 'just for you'} · ${it.prs ? `flagged in review on ${it.prs} PRs` : `told Claude in ${it.sessions ?? 0} sessions`}`,
+    summary: flatLine(it.summary),
   }));
-  return { rows, cursor: 0, checked: new Set(rows.map((r) => r.id)), done: false, aborted: false };
+  return { rows, cursor: 0, checked: new Set(rows.filter((_, i) => items[i]!.ticked).map((r) => r.id)), done: false, aborted: false };
 }
 
 /** The ticked learnings, as indexes into what was offered, in order. */
@@ -437,11 +438,7 @@ export function keptLearnings(state: PickerState): number[] {
 
 /** Ask which learnings to keep: their indexes, or null when the person cancelled. */
 export async function pickLearnings(items: LearningChoice[]): Promise<number[] | null> {
-  const fromReviews = items.filter((it) => it.prs).length;
-  const title =
-    fromReviews === 0
-      ? `${brand()} init — you told Claude these more than once. Keep the ones it should follow:`
-      : `${brand()} init — ${fromReviews === items.length ? 'reviewers flagged these on more than one PR' : 'these came up more than once in your sessions and PR reviews'}. Keep the ones Claude should follow:`;
+  const title = `${brand()} init found these in your past work here. Keep the ones Claude should follow (only your own words start ticked):`;
   const state = await drivePicker(learningsPickerState(items), title);
   return state ? keptLearnings(state) : null;
 }
@@ -466,7 +463,7 @@ export function formatNonInteractiveHelp(detectedIds: string[]): string {
   ];
   const width = Math.max(...examples.map(([cmd]) => cmd.length));
   return [
-    `${b} init: no TTY to prompt on, and no --agents/--yes given — nothing written.`,
+    `${b} init: no TTY to prompt on, and no --agents/--yes given: nothing written.`,
     `detected: ${list}`,
     "",
     ...examples.map(([cmd, note]) => `  ${cmd.padEnd(width)}   # ${note}`),
@@ -489,7 +486,7 @@ export function formatPlan(
   // Codex, Hermes and Antigravity all write AGENTS.md: list each write once.
   const all = plan.filter((p) => ids.includes(p.id)).flatMap((p) => p.writes);
   const writes = [...new Map(all.map((w) => [`${w.path}\0${w.what}`, w])).values()];
-  if (writes.length === 0) return 'would write — nothing (no agents selected)';
+  if (writes.length === 0) return 'would write: nothing (no agents selected)';
 
   const pad = (rows: PlannedWrite[], f: (p: string) => string) => {
     const w = Math.max(...rows.map((r) => f(r.path).length));
@@ -499,13 +496,13 @@ export function formatPlan(
   const lines: string[] = [];
   const repoWrites = writes.filter((w) => w.scope === 'repo');
   if (repoWrites.length > 0) {
-    lines.push('would write — this repo:', ...pad(repoWrites, (p) => relative(repo, p)));
+    lines.push('would write in this repo:', ...pad(repoWrites, (p) => relative(repo, p)));
   }
   const globalWrites = writes.filter((w) => w.scope === 'global');
   if (globalWrites.length > 0) {
     if (lines.length) lines.push('');
     lines.push(
-      warn('would write — your machine, affects ALL repos:'),
+      warn('would write on your machine, affects ALL repos:'),
       ...pad(globalWrites, (p) => tilde(p, home)),
       '',
       dim('suppress the out-of-repo writes with --no-global'),

@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { finishReviewRead, ghReady, reviewDigest, reviewedPRs, reviewWords, verifyReviews, type ReviewedPR, type ReviewFinding, type ReviewResult } from "../src/notes/pr-reviews.js";
@@ -149,10 +149,11 @@ function githubRepo(name: string): string {
 function pastSessions(repo: string, home: string): void {
   const projects = claudeProjectDir(repo, home);
   mkdirSync(projects, { recursive: true });
-  for (const id of ["aaaaaaaa-1111", "bbbbbbbb-2222"])
+  // Two sessions on two different days: a restart the same morning would count once.
+  for (const [id, at] of [["aaaaaaaa-1111", "2026-10-01T10:00:00Z"], ["bbbbbbbb-2222", "2026-10-03T10:00:00Z"]])
     writeFileSync(
       join(projects, `${id}.jsonl`),
-      transcript([{ type: "user", cwd: repo, timestamp: "2026-10-01T10:00:00Z", message: { role: "user", content: "always run go test with -race before pushing" } }]),
+      transcript([{ type: "user", cwd: repo, timestamp: at, message: { role: "user", content: "always run go test with -race before pushing" } }]),
     );
 }
 
@@ -243,6 +244,8 @@ function initRun(repo: string, home: string, bin: string) {
   return { status: r.status, err: r.stderr };
 }
 
+const reviewLearningsOrNone = (repo: string) => (existsSync(join(repo, ".trail", "learnings")) ? reviewLearnings(repo) : []);
+
 const reviewLearnings = (repo: string) =>
   readdirSync(join(repo, ".trail", "learnings"))
     .filter((f) => f.endsWith(".md"))
@@ -250,53 +253,23 @@ const reviewLearnings = (repo: string) =>
     .filter((n) => /Flagged in review/.test(n.body));
 
 // The stand-ins are shebang scripts, which Windows won't run as `claude` or `gh`.
-test("trail init learns what reviewers flagged on two PRs, beside the session learnings, once per repo", { skip: process.platform === "win32" }, () => {
-  const home = mkdtempSync(join(tmpdir(), "reviews-init-home-"));
-  const repo = githubRepo("reviews-init");
-  pastSessions(repo, home);
-  const { bin, log } = fakeTools(true);
-
-  const first = initRun(repo, home, bin);
-  assert.equal(first.status, 0, first.err);
-  assert.match(first.err, /· reading review comments on this repo's merged PRs for what reviewers keep flagging/);
-  assert.match(first.err, /✓ learned 1 thing you told Claude more than once, from your last 2 sessions here\n {4}for your team · told Claude in 2 sessions: Run go test with -race before pushing\n/);
-  assert.match(first.err, /✓ learned 1 thing reviewers flagged on more than one PR, from the last 4 merged PRs here\n {4}for your team · flagged in review on 2 PRs: Return a 500 when db\.query fails in src\/api\n· Claude follows them from your next session\n🌱 Commit what you learned/);
-  assert.equal(first.err.match(/Claude follows them/g)?.length, 1, "one closing line for both");
-
-  const [learning] = reviewLearnings(repo);
-  assert.ok(learning);
-  assert.equal(learning.standing, true);
-  assert.match(learning.body, /_Flagged in review on 2 PRs here \(#41, #38\), most recently on Oct 10\._/);
-
-  // What Claude was sent: reviewers' comments, scrubbed, with no names, bots or author replies.
-  const sent = readFileSync(join(log, "reviews.txt"), "utf8");
-  assert.match(sent, /=== PR #41 · 2026-10-10 · Orders endpoint ===\n\[review\] Looks good once the error handling is in\.\n\[review on src\/api\/orders\.ts\] This handler swallows/);
-  for (const absent of ["ghp_", "alice", "bob", "done, thanks", "Consider adding tests", "PR #30"]) assert.ok(!sent.includes(absent), `sent ${absent}`);
-
-  const again = initRun(repo, home, bin);
-  assert.equal(again.status, 0, again.err);
-  assert.doesNotMatch(again.err, /reading review comments/, "read once per repo on this machine");
-
-  // A teammate's machine, with the review learning already in the repo: nothing new to learn from the same reviews.
-  const teammate = mkdtempSync(join(tmpdir(), "reviews-teammate-home-"));
-  const theirs = initRun(repo, teammate, bin);
-  assert.equal(theirs.status, 0, theirs.err);
-  assert.doesNotMatch(theirs.err, /reading review comments/);
-  assert.equal(reviewLearnings(repo).length, 1);
-});
-
-test("without a signed-in gh, trail init skips PR reviews quietly and still learns from sessions", { skip: process.platform === "win32" }, () => {
-  const home = mkdtempSync(join(tmpdir(), "reviews-nogh-home-"));
-  const repo = githubRepo("reviews-nogh");
-  pastSessions(repo, home);
-  const { bin, log } = fakeTools(false);
-
-  const r = initRun(repo, home, bin);
-  assert.equal(r.status, 0, r.err);
-  assert.doesNotMatch(r.err, /review/i);
-  assert.match(r.err, /✓ learned 1 thing you told Claude more than once/);
-  assert.equal(readFileSync(join(log, "gh.txt"), "utf8"), "auth token\n", "asked gh only whether it's signed in");
-  assert.ok(!existsSync(join(log, "reviews.txt")));
+// 1b (0 rule 4, R60): only the person at their own terminal may start `claude`, so an init with no terminal reads no
+// PR reviews and never asks gh. The reading itself is tested above; at the terminal it runs from `beginLookBack`.
+test("trail init with no terminal reads no PR reviews: gh isn't asked and claude isn't started, and the sessions are still looked back at", { skip: process.platform === "win32" }, () => {
+  for (const signedIn of [true, false]) {
+    const home = mkdtempSync(join(tmpdir(), "reviews-init-home-"));
+    const repo = githubRepo(`reviews-init-${signedIn}`);
+    pastSessions(repo, home);
+    const { bin, log } = fakeTools(signedIn);
+    const r = initRun(repo, home, bin);
+    assert.equal(r.status, 0, r.err);
+    assert.doesNotMatch(r.err, /review/i);
+    assert.match(r.err, /✓ looked back at 2 Claude Code sessions about this repo/);
+    assert.deepEqual(readdirSync(log), [], "neither gh nor claude ran");
+    assert.equal(reviewLearningsOrNone(repo).length, 0);
+    rmSync(home, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
+  }
 });
 
 test("gh isn't asked at all without a GitHub remote, and a missing gh means no reviews", () => {

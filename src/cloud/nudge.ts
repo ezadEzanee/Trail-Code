@@ -8,11 +8,10 @@
  * stops being read.
  *
  * The link carries a fresh random state. A detached child first tells Trail
- * about it (which repo the agent was in, and every repo Trail knows on this
- * machine, for the workspace's repo picker), then asks Trail by that state
- * until the person has signed in and picked repos. Then it saves the
- * connection, uploads the picked repos' learnings, and leaves the news for the
- * next trail command, which says so once.
+ * about it (only the repo the agent was in, for the workspace's repo picker),
+ * then asks Trail by that state until the person has signed in and picked it.
+ * Then it saves the connection, uploads that repo's committed learnings, and
+ * leaves the news for the next trail command, which says so once.
  *
  * Connected, a repo with learnings that isn't in the workspace gets one
  * question, ever: add it?
@@ -22,13 +21,13 @@ import { randomBytes } from "node:crypto";
 import { basename, join } from "node:path";
 import { brand } from "../brand.js";
 import { graftCliPath } from "../claude/paths.js";
-import { noteAuthor } from "../notes/git-facts.js";
 import { keepsNotes, knownRepos, noteCount, repoName, repoPlace, trailHome } from "../notes/home.js";
 import { currentTranscript } from "../notes/session-cost.js";
 import { durationBucket } from "../telemetry/contract.js";
 import { track } from "../telemetry/track.js";
+import { ensurePrivateDir } from "../util/private-file.js";
 import { readJson, writeJsonAtomic } from "../util/state.js";
-import { claimHandoff, readCloud, registerHandoff, SECRET_FILE_MODE, trailUrl, writeCloud, type ClaimResult, type HandoffRepo } from "./workspace.js";
+import { claimHandoff, readCloud, registerHandoff, SECRET_FILE_MODE, serverUrl, trailUrl, writeCloud, type ClaimResult, type HandoffRepo } from "./workspace.js";
 import { dropActivity, syncWorkspaceRepos } from "./workspace-sync.js";
 
 /** What the link says, in turn: one per session, so it never reads the same twice running. */
@@ -54,6 +53,8 @@ interface Pending {
   createdAt: number;
   /** The repo the agent was in, by key. */
   repo?: string;
+  /** The Trail the link is for: Trail cloud, or what `trail login --server` named. Its sign-in, and every upload after, go there. */
+  server?: string;
 }
 
 interface NudgeState {
@@ -83,6 +84,7 @@ function readState(env?: NodeJS.ProcessEnv): NudgeState {
 
 /** Owner-only, like cloud.json: a pending link's state claims the workspace token. */
 function writeState(patch: Partial<NudgeState>, env?: NodeJS.ProcessEnv): void {
+  ensurePrivateDir(trailHome(env));
   writeJsonAtomic(statePath(env), { ...readState(env), ...patch }, false, SECRET_FILE_MODE);
 }
 
@@ -107,9 +109,14 @@ export function newState(): string {
   return randomBytes(24).toString("base64url");
 }
 
-/** The page the link opens. */
-export function connectUrl(state: string, env: NodeJS.ProcessEnv = process.env): string {
-  return `${trailUrl(env)}/connect?state=${encodeURIComponent(state)}`;
+/** The page the link opens, on the Trail `server`. */
+export function connectUrl(state: string, server: string): string {
+  return `${server}/connect?state=${encodeURIComponent(state)}`;
+}
+
+/** The Trail a link is for. A link an older trail made names none: Trail cloud. */
+function linkServer(p: Pending, env: NodeJS.ProcessEnv): string {
+  return serverUrl(p.server) ?? trailUrl(env);
 }
 
 /** The link out now, if it's still good. */
@@ -164,13 +171,13 @@ export function cloudLines(repo: string, opts: NudgeOptions): string[] {
     const session = sessionKey(repo, env, now);
     if (offeredThisSession(st, session, now)) return [];
 
-    const link = pending ?? { state: newState(), createdAt: now, repo: place.key };
+    const link = pending ?? { state: newState(), createdAt: now, repo: place.key, server: trailUrl(env) };
     const shown = st.shown ?? 0;
     const i = shown % NUDGE_WORDS.length;
     writeState({ session: session ?? undefined, at: now, shown: shown + 1, pending: link }, env);
     startWait();
     track("brain_signup_opened", { mode: "nudge", command: opts.command, wording: WORDING_IDS[i] }, { repo });
-    return nudgeLines(NUDGE_WORDS[i], connectUrl(link.state, env), agent);
+    return nudgeLines(NUDGE_WORDS[i], connectUrl(link.state, linkServer(link, env)), agent);
   } catch {
     return [];
   }
@@ -224,11 +231,16 @@ export function startWaiting(env: NodeJS.ProcessEnv = process.env, now = Date.no
   child.unref();
 }
 
-/** The repos this machine knows, as the picker lists them, with how many learnings each has here. */
-export function pickerRepos(env: NodeJS.ProcessEnv = process.env): HandoffRepo[] {
-  return knownRepos(env)
-    .slice(0, 100)
-    .map((r) => ({ key: r.key, name: r.name, learnings: noteCount(r.path, env) }));
+/**
+ * What the picker may list before anyone has opened the link: the one repo it
+ * was offered in, with how many learnings it has here. Never this machine's
+ * other repos: the link sits in an agent's reply, and nobody agreed yet to
+ * tell Trail what else is on the laptop. The rest are offered one at a time
+ * once connected (`addRepoLines`).
+ */
+export function pickerRepos(repoKey: string | undefined, env: NodeJS.ProcessEnv = process.env): HandoffRepo[] {
+  const r = repoKey ? knownRepos(env).find((k) => k.key === repoKey) : undefined;
+  return r ? [{ key: r.key, name: r.name, learnings: noteCount(r.path, env) }] : [];
 }
 
 /** The gap between two asks: quick while the person is likely signing in, then slower. */
@@ -266,18 +278,14 @@ export async function waitForConnect(opts: WaitOptions = {}): Promise<ClaimResul
       done();
       return null;
     }
-    const base = trailUrl(env);
-    const known = pickerRepos(env);
-    const current = known.find((r) => r.key === pending.repo);
-    const currentPath = knownRepos(env).find((r) => r.key === pending.repo)?.path;
+    // The Trail the link was made for, and only that one: nothing in the environment moves it.
+    const base = linkServer(pending, env);
+    const repos = pickerRepos(pending.repo, env);
+    const current = repos[0];
+    // No name either: whoever opens the link would see it before signing in.
     const reg = await registerHandoff(
       base,
-      {
-        state: pending.state,
-        repo: current ? { key: current.key, name: current.name } : null,
-        repos: known,
-        author: currentPath ? noteAuthor(currentPath) : "",
-      },
+      { state: pending.state, repo: current ? { key: current.key, name: current.name } : null, repos, author: "" },
       opts.fetchImpl,
     );
     if ("url" in reg) opts.onRegistered?.(reg.url);
@@ -313,14 +321,18 @@ export async function waitForConnect(opts: WaitOptions = {}): Promise<ClaimResul
 }
 
 /**
- * A link for `trail login`: the one out now if it's good, else a new one.
- * Recorded like a nudge, so the background wait and the agent agree on it.
+ * A link for `trail login`: the one out now if it's good and for the same
+ * Trail, else a new one. `server` is a self-hosted Trail (`--server`), saved
+ * on the link; without it, Trail cloud. Recorded like a nudge, so the
+ * background wait and the agent agree on it, and on where it goes.
  */
-export function loginLink(repo: string, env: NodeJS.ProcessEnv = process.env, now = Date.now()): string {
-  const st = readState(env);
-  const link = livePending(st, now) ?? { state: newState(), createdAt: now, repo: repoPlace(repo, env).key };
+export function loginLink(repo: string, env: NodeJS.ProcessEnv = process.env, now = Date.now(), server?: string): string {
+  const want = server ?? trailUrl(env);
+  const live = livePending(readState(env), now);
+  // A state registered with one Trail is never handed to another.
+  const link = live && linkServer(live, env) === want ? live : { state: newState(), createdAt: now, repo: repoPlace(repo, env).key, server: want };
   writeState({ pending: link }, env);
-  return connectUrl(link.state, env);
+  return connectUrl(link.state, want);
 }
 
 /** Forget a link that's out, and any news not yet told. For `trail logout`. */

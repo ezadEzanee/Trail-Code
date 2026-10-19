@@ -59,7 +59,7 @@ export function claudeGlobalTargets(home: string, brand: Brand = 'graft'): Plann
     ({ hostId: 'claude', id, path, scope: 'global', kind, what });
   const writes = [
     g('claude-global-shim', join(globalHelpersDir(home), 'graft-hooks.cjs'), 'hook', 'hooks shim (user level)'),
-    g('claude-global-hooks', join(home, '.claude', 'settings.json'), 'hook', 'SessionStart / UserPromptSubmit / PostToolUse / Stop / SessionEnd'),
+    g('claude-global-hooks', join(home, '.claude', 'settings.json'), 'hook', 'SessionStart / UserPromptSubmit / PreToolUse / PostToolUse / PostToolUseFailure / Stop / SessionEnd'),
     g('claude-global-mcp', join(home, '.claude.json'), 'mcp', `mcpServers.${brand}`),
   ];
   // trail registers no server for Claude Code: the hooks and the `trail` command do its work.

@@ -9,7 +9,8 @@
  * on top of each other. `claude/state.ts` re-exports all of this, so nothing
  * outside had to change when it moved.
  */
-import { readFileSync, writeFileSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, renameSync, rmSync, statSync, openSync, writeSync, closeSync, fchmodSync, constants } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { join, dirname, isAbsolute } from 'node:path';
 import { mapDirFor } from '../context/map-dir.js';
 
@@ -69,11 +70,21 @@ export function readJson<T>(p: string): T | null {
  */
 export function writeJsonAtomic(p: string, value: unknown, compact = false, mode?: number): void {
   mkdirSync(dirname(p), { recursive: true });
-  const tmp = `${p}.${process.pid}.tmp`;
+  // A name no one can guess, opened new-only and never through a link: a link
+  // planted where the temp file goes is neither written through nor renamed
+  // into place (D85).
+  const tmp = `${p}.${process.pid}.${randomBytes(8).toString('hex')}.tmp`;
   try {
     // `mode` applies to the new file before it's renamed into place, so a
     // secret is never readable by others even for a moment.
-    writeFileSync(tmp, compact ? JSON.stringify(value) : JSON.stringify(value, null, 2), mode === undefined ? undefined : { mode });
+    const fd = openSync(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), mode ?? 0o666);
+    try {
+      if (mode !== undefined && process.platform !== 'win32') fchmodSync(fd, mode);
+      const buf = Buffer.from(compact ? JSON.stringify(value) : JSON.stringify(value, null, 2), 'utf8');
+      for (let off = 0; off < buf.length; ) off += writeSync(fd, buf, off, buf.length - off);
+    } finally {
+      closeSync(fd);
+    }
     renameSync(tmp, p);
   } catch (e) {
     try { rmSync(tmp, { force: true }); } catch { /* nothing more we can do */ }

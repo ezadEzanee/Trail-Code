@@ -193,7 +193,7 @@ test('CLI: --dry-run prints the plan, both sections, and writes nothing', () => 
   mkdirSync(join(home, '.codex'), { recursive: true });
   const out = cliStderr(repo, home, ['--dry-run']);
 
-  assert.match(out, /would write — this repo:/);
+  assert.match(out, /would write in this repo:/);
   // The plan prints display paths, which keep the platform separator.
   assert.ok(out.includes(join('.claude', 'settings.json')), out);
   assert.match(out, /AGENTS\.md/);

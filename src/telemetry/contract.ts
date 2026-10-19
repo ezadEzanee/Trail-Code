@@ -63,10 +63,6 @@ export const EVENTS: Record<string, ReadonlySet<string>> = {
    *  and the paths never travel. The supply side of the notes loop; the
    *  `notes` property on `query` is the demand side. */
   note_saved: new Set<string>(['has_cost', 'touches_bucket', 'scope']),
-  /** `ask` showed learnings from earlier sessions: whether any was a
-   *  teammate's, and what they took to work out less reading them, as a
-   *  bucket. The reuse half of the learnings loop; `note_saved` is supply. */
-  learning_reused: new Set<string>(['teammate', 'saved_tokens_bucket']),
   /** Once a day per repo, from the session-start hook, for a repo trail runs
    *  in: whether `.trail/` is committed there, how many learnings it holds,
    *  as a bucket, and whether this machine shares it with a workspace. With
@@ -84,13 +80,6 @@ export const EVENTS: Record<string, ReadonlySet<string>> = {
    *  saved, as buckets, how long it took, and the model. The messages, the
    *  comments and the findings never travel. */
   cold_start: new Set<string>(['source', 'outcome', 'sessions_bucket', 'reviews_bucket', 'offered_bucket', 'picked_bucket', 'duration_bucket', 'model']),
-  /** `trail learn` saved a correction as a takeaway on a skill (into
-   *  `~/.trail/`). `new_skill` says whether it started a skill. The text never
-   *  travels. */
-  takeaway_saved: new Set<string>(['new_skill']),
-  /** `trail skills fold` wrote waiting takeaways into a skill's SKILL.md;
-   *  how many, as a bucket. Whether corrections become the skill. */
-  skills_folded: new Set<string>(['takeaways_bucket']),
   /** One closed agent session, summarised. `graft_reads` vs `source_reads` is
    *  the single number that says whether an agent prefers graft to grep; the two
    *  `*_turns` buckets are the follow-up question — of the turns that used graft,
@@ -99,7 +88,76 @@ export const EVENTS: Record<string, ReadonlySet<string>> = {
     'graft_reads_bucket', 'source_reads_bucket', 'saved_tokens_bucket',
     'graft_turns_bucket', 'reported_turns_bucket',
   ]),
+
+  /* Learned skills (spec section 20). Every value is a member of a closed set
+   * in {@link VALUES}; a skill's name, its steps, a command, a prompt, a lesson
+   * or a path is never one of them, so none of those can travel. */
+
+  /** Trail offered to keep a skill (or a lesson, an update, a promotion): at which moment. */
+  skill_offered: new Set<string>(['moment']),
+  /** The person's answer to an offer. A withdrawn offer sends nothing. */
+  skill_answer: new Set<string>(['answer']),
+  /** A skill was saved: what it came from, and whose it is. */
+  skill_saved: new Set<string>(['from', 'scope']),
+  /** Trail changed a skill it wrote, on the person's yes or their own command (phase 2): how. */
+  skill_changed: new Set<string>(['op']),
+  /** A skill moved up a scope (phase 3). */
+  skill_promoted: new Set<string>(['to']),
+  /** A joined team repo was pulled (phase 3): how it went. */
+  team_pull: new Set<string>(['outcome']),
+  /** A skill the agent was given ran: whether its own check passed. */
+  skill_used: new Set<string>(['outcome']),
+  /** The weekly value line was said (phase 2): where it went. */
+  skill_value: new Set<string>(['channel']),
+  /** A skill stopped being offered to the agent as is: why. */
+  skill_stale: new Set<string>(['reason']),
+  /** A guardrail fired: which built-in one, and what it did. */
+  guardrail: new Set<string>(['class', 'outcome']),
+  /** A failing command matched a known wall: which one, and whether the person had kept a lesson for it. */
+  wall_hit: new Set<string>(['class', 'had_lesson']),
+  /** How long one hook took, as a bucket: which hook. */
+  hook_ms: new Set<string>(['event', 'bucket']),
 };
+
+/** The labels {@link hookMsBucket} returns. */
+export const HOOK_MS_BUCKETS = ['<50ms', '50-100ms', '100-300ms', '300ms-1s', '1-3s', '3s+'] as const;
+
+/**
+ * The values an event's key may take, where the contract fixes them. `track()`
+ * drops a value outside the set, key and all, so a call site that passes a
+ * skill's name, a prompt or an error line under an allowed key sends nothing
+ * for it. Every key of the skills events is listed here.
+ */
+export const VALUES: Record<string, Record<string, ReadonlySet<string>>> = {
+  skill_offered: { moment: new Set(['asked', 'repeated', 'repaired', 'correction', 'update', 'drift', 'retire', 'promote']) },
+  skill_answer: { answer: new Set(['yes', 'no', 'show', 'none', 'off', 'retire']) },
+  skill_changed: { op: new Set(['update', 'extend', 'split', 'replace', 'retire', 'adopted', 'restore-version']) },
+  skill_value: { channel: new Set(['context', 'notice', 'list']) },
+  skill_saved: { from: new Set(['init', 'repeated', 'repaired', 'asked']), scope: new Set(['personal', 'repo', 'team']) },
+  skill_promoted: { to: new Set(['repo', 'team']) },
+  team_pull: { outcome: new Set(['updated', 'unchanged', 'diverged', 'failed']) },
+  skill_used: { outcome: new Set(['checked', 'failed', 'unchecked']) },
+  skill_stale: { reason: new Set(['failed', 'corrected', 'missing', 'unused', 'unfollowed']) },
+  guardrail: {
+    class: new Set(['no-timeout', 'prod-after-beta']),
+    outcome: new Set(['hint', 'ask', 'deny', 'sure-fail', 'avoided']),
+  },
+  wall_hit: {
+    class: new Set(['timeout-missing', 'zsh-no-match', 'git-https-auth', 'docker-rootless', 'npm-e401-eotp', 'claude-not-logged-in', 'enospc']),
+    had_lesson: new Set(['true', 'false']),
+  },
+  hook_ms: {
+    event: new Set(['session-start', 'prompt', 'pre-bash', 'tool-savings', 'post-bash', 'post-bash-fail', 'post-edit', 'post-edit-sync', 'stop']),
+    bucket: new Set(HOOK_MS_BUCKETS),
+  },
+};
+
+/** Whether `value` may go under `key` of `event`: always, unless {@link VALUES} fixes the key's values. */
+export function allowedValue(event: string, key: string, value: string): boolean {
+  if (!Object.hasOwn(VALUES, event)) return true;
+  const keys = VALUES[event]!;
+  return !Object.hasOwn(keys, key) || keys[key]!.has(value);
+}
 
 /** Stamped on every event by `track()`; not listed per event above. */
 export const COMMON_KEYS = [
@@ -123,7 +181,7 @@ export type Surface = 'cli' | 'mcp' | 'hook';
 
 /** Which editor/agent graft is running under. Derived from the surface and the
  *  wiring on disk — never from a hostname, a username, or an env var's value. */
-export type AgentHost = 'claude-code' | 'cursor' | 'mcp' | 'cli';
+export type AgentHost = 'claude-code' | 'cursor' | 'copilot' | 'mcp' | 'cli';
 
 /**
  * The commands worth counting. A command absent here is simply not reported —
@@ -231,6 +289,17 @@ export function countBucket(n: number): string {
   if (n < 50) return '20-49';
   if (n < 200) return '50-199';
   return '200+';
+}
+
+/** One hook's wall-clock. The budgets are 50 ms (PreToolUse) and 300 ms (the
+ *  rest), so the labels split there. */
+export function hookMsBucket(ms: number): (typeof HOOK_MS_BUCKETS)[number] {
+  if (ms < 50) return '<50ms';
+  if (ms < 100) return '50-100ms';
+  if (ms < 300) return '100-300ms';
+  if (ms < 1000) return '300ms-1s';
+  if (ms < 3000) return '1-3s';
+  return '3s+';
 }
 
 /** Estimated tokens saved in one session — the README's central claim, in the

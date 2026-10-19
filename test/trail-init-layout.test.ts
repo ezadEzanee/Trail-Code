@@ -45,7 +45,8 @@ test("the shared settings get one SessionStart entry, and lose what an older ini
   assert.equal(shared.statusLine, undefined);
   assert.deepEqual(Object.keys(shared.hooks), ["SessionStart"]);
   assert.equal(shared.hooks.SessionStart[0].hooks[0].command, "./scripts/fetch-secrets.sh", "the team's own hook stays, first");
-  assert.equal(shared.hooks.SessionStart[1].hooks[0].command, 'node "${CLAUDE_PROJECT_DIR:-.}/.trail/hook.cjs" session-start');
+  // Fails open like every other event (D116 item 6), and its timeout is in seconds.
+  assert.deepEqual(shared.hooks.SessionStart[1].hooks[0], { type: "command", command: 'node "${CLAUDE_PROJECT_DIR:-.}/.trail/hook.cjs" session-start || exit 0', timeout: 10 });
   assert.deepEqual(shared.permissions, { allow: ["Bash(make:*)"] });
   assert.equal(shared.footerLinksRegexes, undefined);
   assert.deepEqual(mergeTrailShared(shared), shared, "a second run changes nothing");

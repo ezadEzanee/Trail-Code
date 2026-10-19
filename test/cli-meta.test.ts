@@ -20,7 +20,7 @@ test('formatVersionReport: up to date', () => {
 
 test('formatVersionReport: newer version available', () => {
   const out = formatVersionReport('0.4.4', { ok: true, version: '0.4.5' });
-  assert.equal(out, 'graft 0.4.4\nlatest on npm: 0.4.5 — run graft upgrade');
+  assert.equal(out, 'graft 0.4.4\nlatest on npm: 0.4.5, run graft upgrade');
 });
 
 test('formatVersionReport: offline / unreachable', () => {

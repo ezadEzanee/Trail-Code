@@ -263,7 +263,7 @@ export function trailHandoverLine(input: { env?: NodeJS.ProcessEnv; home?: strin
     /* shown again next time */
   }
   return (
-    "· graft is now Trail-code: the same code map under the `trail` command, plus learnings the team shares in .trail/. " +
+    "· graft is now Trail-code: the same code map under the `trail` command, plus learnings everyone working in the repo shares in .trail/. " +
     "Tell the user once, in a line at the end of your first reply, that `graft upgrade` adds it and graft keeps working."
   );
 }

@@ -189,7 +189,7 @@ export function sessionInputRate(dir: string): number | null {
 
 export function formatSessionStats(s: SessionSummary | null): string {
   if (s === null) {
-    return `${cmd('graft stats')}: no session recorded yet — use ${brand()} in an agent session, then look again.`;
+    return `${cmd('graft stats')}: no session recorded yet. Use ${brand()} in an agent session, then look again.`;
   }
   const graft = s.graftReads ?? 0;
   const source = s.sourceReads ?? 0;
@@ -198,7 +198,7 @@ export function formatSessionStats(s: SessionSummary | null): string {
   const mix =
     total === 0 ? 'no retrieval yet' : `${Math.round((graft / total) * 100)}% graft`;
   const lines = [
-    `${cmd('graft stats')} — session ${s.id}`,
+    `${cmd('graft stats')}: session ${s.id}`,
     `  graft reads:   ${graft}`,
     `  source reads:  ${source}   (Read / Grep / Glob)`,
     `  mix:           ${mix}`,
@@ -209,6 +209,6 @@ export function formatSessionStats(s: SessionSummary | null): string {
   // would be worse than the silence.
   const usd = dollarsSaved(saved, s.inputCostMicros, s.inputTokensBilled);
   if (usd !== null) lines.push(`  value saved:   ~${formatDollars(usd)}`);
-  if (s.lastQuery) lines.push(`  last query:    ${s.lastQuery}`);
+  if (s.promptAsks) lines.push(`  prompts asked: ${s.promptAsks}`);
   return lines.join('\n');
 }

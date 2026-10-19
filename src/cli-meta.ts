@@ -88,7 +88,7 @@ export function formatVersionReport(current: string, latest: NpmViewResult): str
   } else if (latest.version === current) {
     lines.push(`latest on npm: ${current} ✓ up to date`);
   } else {
-    lines.push(`latest on npm: ${latest.version} — run ${brand()} upgrade`);
+    lines.push(`latest on npm: ${latest.version}, run ${brand()} upgrade`);
   }
   return lines.join("\n");
 }
@@ -139,7 +139,7 @@ export interface UpgradeResult {
 export function formatUpgradeReport(result: UpgradeResult): string {
   if (!result.ran) {
     return (
-      `running via npx — npx already fetches the latest ${brand()} on every run.\n` +
+      `running via npx: npx already fetches the latest ${brand()} on every run.\n` +
       `For a permanent install: npm install -g ${PKG_NAME}`
     );
   }
@@ -147,7 +147,7 @@ export function formatUpgradeReport(result: UpgradeResult): string {
     return `✗ npm install -g ${PKG_NAME}@latest failed${result.errorMessage ? `: ${result.errorMessage}` : ""}`;
   }
   const line = `${brand()} ${result.oldVersion ?? "?"} → ${result.newVersion ?? result.oldVersion ?? "?"}`;
-  return result.trailVersion ? `${line}\n✓ trail ${result.trailVersion} installed too — graft keeps working, and trail is its new name` : line;
+  return result.trailVersion ? `${line}\n✓ trail ${result.trailVersion} installed too: graft keeps working, and trail is its new name` : line;
 }
 
 /** Runs `npm install -g @nanonets/graft@latest` (inheriting stdio so the user

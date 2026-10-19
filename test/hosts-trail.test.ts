@@ -120,7 +120,7 @@ test('trail init for every agent: trail-named files, trail commands, a trail ser
   assert.ok(existsSync(join(home, '.gemini', 'skills', 'trail', 'SKILL.md')));
   assert.ok(!existsSync(join(home, '.gemini', 'skills', 'graft')));
   const hooks = JSON.parse(readFileSync(join(repo, '.cursor', 'hooks.json'), 'utf8'));
-  assert.match(hooks.hooks.postToolUse[0].command, /trail-hooks\.cjs" cursor-post-tool$/);
+  assert.match(hooks.hooks.postToolUse[0].command, /trail-hooks\.cjs" cursor-post-tool \|\| exit 0$/);
 
   // A teammate on graft refreshing the same repo writes the same files: it never flips back.
   assert.equal(hostWiringName(repo), 'trail');

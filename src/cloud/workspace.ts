@@ -15,13 +15,52 @@
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { trailHome } from "../notes/home.js";
+import { ensurePrivateDir, PRIVATE_FILE_MODE } from "../util/private-file.js";
 import { readJson, writeJsonAtomic } from "../util/state.js";
 
-/** Trail's own front end and API. TRAIL_URL (or the older GRAFT_BRAIN_URL) moves it, for a local or self-hosted Trail. */
+/** Trail's own front end and API. */
 const DEFAULT_TRAIL_URL = "https://app.trailhq.com";
 
+/**
+ * TEST ONLY. Points sign-in at a stand-in Trail, for tests and local demos.
+ * Taken only for a host on this machine (localhost, 127.0.0.1, [::1]) or a
+ * `.test` one, which nothing on the internet answers, so an export left in a
+ * shell can't send a sign-in, and the learnings uploaded after it, anywhere
+ * else. Never documented for users: a self-hosted Trail is `trail login
+ * --server <url>`, which the link itself carries.
+ */
+export const TEST_SERVER_ENV = "TRAIL_TEST_SERVER";
+
+/** `url` as a server address (http or https, no trailing slash), or null when it isn't one. */
+export function serverUrl(url: string | undefined): string | null {
+  const t = url?.trim().replace(/\/+$/, "");
+  if (!t || !/^https?:\/\//i.test(t)) return null;
+  try {
+    new URL(t);
+    return t;
+  } catch {
+    return null;
+  }
+}
+
+function testServer(env: NodeJS.ProcessEnv): string | null {
+  const url = serverUrl(env[TEST_SERVER_ENV]);
+  if (!url) return null;
+  const host = new URL(url).hostname.toLowerCase();
+  const local = host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host.endsWith(".localhost") || host.endsWith(".test");
+  return local ? url : null;
+}
+
+/**
+ * Where a sign-in goes when nothing chose otherwise: Trail cloud. The
+ * connection then keeps the address it signed in at in cloud.json, and every
+ * later call goes there. No variable a shell might still export moves it
+ * (TRAIL_URL, or GRAFT_BRAIN_URL for the old brain API): a self-hosted Trail
+ * comes from `trail login --server`, saved on the link; tests use
+ * TEST_SERVER_ENV.
+ */
 export function trailUrl(env: NodeJS.ProcessEnv = process.env): string {
-  return (env.TRAIL_URL || env.GRAFT_BRAIN_URL || DEFAULT_TRAIL_URL).replace(/\/+$/, "");
+  return testServer(env) ?? DEFAULT_TRAIL_URL;
 }
 
 export interface WorkspaceInfo {
@@ -65,9 +104,11 @@ export function cloudEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
 }
 
 /** Owner-only: the file holds the workspace token. */
-export const SECRET_FILE_MODE = 0o600;
+export const SECRET_FILE_MODE = PRIVATE_FILE_MODE;
 
+/** Owner-only, in an owner-only folder: the file holds the workspace token. */
 export function writeCloud(c: Cloud, env: NodeJS.ProcessEnv = process.env): void {
+  ensurePrivateDir(trailHome(env));
   writeJsonAtomic(cloudPath(env), c, false, SECRET_FILE_MODE);
 }
 
@@ -143,9 +184,9 @@ export interface HandoffRepo {
 }
 
 /**
- * Tell Trail about a sign-in link before anyone opens it: which repo the
- * agent was in, and every repo Trail knows on this machine, which is what the
- * workspace's repo picker lists. Names and counts only; no learning travels.
+ * Tell Trail about a sign-in link before anyone opens it: the repo the agent
+ * was in, which is what the workspace's repo picker lists. Its name and
+ * learning count only; no learning, no other repo and no person's name travels.
  */
 export async function registerHandoff(
   base: string,
@@ -208,7 +249,7 @@ export function addRepo(c: Cloud, repo: { key: string; name: string }, fetchImpl
 export interface UploadedLearning {
   /** `.trail/learnings/<name>`. */
   path: string;
-  /** "" for the working tree, or the pushed branch it was found on (`origin/kumar/x`). */
+  /** "" when committed at HEAD, or the pushed branch it was found on (`origin/kumar/x`). */
   ref: string;
   branch?: string;
   title: string;
@@ -229,15 +270,19 @@ export function uploadLearnings(
   return authed(c, "PUT", "/api/cli/learnings", req, { timeoutMs: 60_000, fetchImpl });
 }
 
-/** One use of the learnings: a search that showed some, or a check against them. */
+/**
+ * One use of the learnings: a search that showed some, or a check against
+ * them. Counts and which learnings, never content: no query (for the prompt
+ * hook that is the person's prompt) and no file paths.
+ */
 export interface ActivityEvent {
   repo: string;
   kind: "search" | "check";
   asker: string;
   session: string;
-  query: string;
-  files: string[];
-  /** File names of the learnings it showed. */
+  /** How many files the answer pointed into, or the check covered. */
+  file_count: number;
+  /** File names of the learnings it showed: the name is what the workspace knows a learning by. */
   shown_paths: string[];
   shown_authors: string[];
   at: string;
