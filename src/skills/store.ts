@@ -110,7 +110,8 @@ export function findSkill(name: string, ctx: ScopeCtx): SkillRef | null {
   return listSkills(ctx).find((r) => r.name === name) ?? null;
 }
 
-const RETIRED = (name: string) => new RegExp(`^${name.replace(/[.]/g, '\\.')}-(\\d{4}-\\d{2}-\\d{2})(?:-(\\d+))?$`);
+/** What follows `<name>` in a retired copy's folder name: `-<date>`, then `-2`, `-3` the same day. */
+const RETIRED_TAIL = /^-(\d{4}-\d{2}-\d{2})(?:-(\d+))?$/;
 
 /** The retired copies of a name, newest first: `.retired/<name>-<date>` then `-2`, `-3` the same day. */
 function retiredCopies(name: string, env?: NodeJS.ProcessEnv): string[] {
@@ -120,9 +121,9 @@ function retiredCopies(name: string, env?: NodeJS.ProcessEnv): string[] {
   } catch {
     return [];
   }
-  const re = RETIRED(name);
   return names.flatMap((n) => {
-    const m = re.exec(n);
+    // A prefix check, not a regex built from the name: no character in it can mean anything.
+    const m = n.startsWith(name) ? RETIRED_TAIL.exec(n.slice(name.length)) : null;
     return m ? [{ n, day: m[1]!, k: Number(m[2] ?? 1) }] : [];
   }).sort((a, b) => b.day.localeCompare(a.day) || b.k - a.k).map((x) => x.n);
 }
