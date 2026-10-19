@@ -13,6 +13,7 @@ import { promptSkills, sessionStartSkills, type PromptDeps } from "../src/claude
 import { readGateFile } from "../src/trace/gate-file.js";
 import { updateSkillState } from "../src/skills/state.js";
 import { releaseSkill, shipSkill, WEBSHOP } from "./skills-recall-fixtures.js";
+import { slowness } from "./machine-speed.js";
 import { box, CWD, gateFor, grow, payload, ranIn, save, SID, startPayload, stateOf, typedIn, withNow, type Box } from "./skills-prompt-fixtures.js";
 
 const deps = (b: Box, extra: Partial<PromptDeps> = {}): Partial<PromptDeps> => ({ track: () => {}, gate: gateFor(b), ...extra });
@@ -85,16 +86,20 @@ test("200 skills in the store: one skill per prompt, the right one, inside the d
   // sharing the machine slow the wall clock, never the work done here. TRAIL_PERF=1 also holds the wall clock to it.
   const cpu = () => { const u = process.cpuUsage(); return (u.user + u.system) / 1000; };
   const perf = process.env.TRAIL_PERF === "1";
+  // The deadline was set on a laptop: a slower machine (a shared CI runner) runs this clock slower by its measured
+  // factor, so the hook's 400 ms is the same work everywhere. 1 under TRAIL_PERF=1.
+  const f = slowness();
+  const work = () => cpu() / f;
   const t0 = performance.now();
   const c0 = cpu();
-  const out = run(b, "can you pull and publish 1.4.2 then ff to prod", {}, perf ? deps(b) : deps(b, { clock: cpu }));
-  const ms = cpu() - c0;
+  const out = run(b, "can you pull and publish 1.4.2 then ff to prod", {}, perf ? deps(b) : deps(b, { clock: work }));
+  const ms = (cpu() - c0) / f;
   const wall = performance.now() - t0;
   assert.equal((out.context?.match(/^\[trail\] Skill /gm) ?? []).length, 1, "one skill per prompt");
   assert.equal(stateOf(b).injected.length, 1);
   assert.ok(ms < 2000, `${ms} ms of CPU (loose: the real-transcript timing is in the build note)`);
   if (perf) assert.ok(wall < 2000, `${wall} ms`);
-  assert.match(run(b, "release-npm please", {}, perf ? deps(b) : deps(b, { clock: cpu })).context ?? "", /skill release-npm/);
+  assert.match(run(b, "release-npm please", {}, perf ? deps(b) : deps(b, { clock: work })).context ?? "", /skill release-npm/);
 });
 
 test("can't ask: dontAsk, bypassPermissions and a missing permission_mode all get the show-the-command variant (D17)", () => {

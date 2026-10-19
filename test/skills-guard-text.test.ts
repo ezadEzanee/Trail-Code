@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { agentGuard } from '../src/skills/risk.js';
 import { preBashSkills } from '../src/claude/pre-bash-skills.js';
+import { slowness } from './machine-speed.js';
 
 const ENV = { HOME: '/tmp/guard-text-home', TRAIL_HOME: '/tmp/guard-text-home/.trail' };
 const input = (command: string) => ({ session_id: 'sess-guard-text', tool_name: 'Bash', tool_input: { command } });
@@ -151,5 +152,7 @@ test('the narrowed guard stays linear: 2 MB of each shape reads in under 20 ms o
     process.stdout.write(JSON.stringify(out));`;
   const r = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', probe], { encoding: 'utf8', timeout: 30_000 });
   assert.equal(r.signal, null, 'the guard ran past 30 s');
-  for (const row of JSON.parse(r.stdout) as Array<{ ms: number }>) assert.ok(row.ms < 20, JSON.stringify(row));
+  // 20 ms where the bar was set, scaled to this machine (a backtracking regex takes seconds on 2 MB, on any machine).
+  const bar = 20 * slowness();
+  for (const row of JSON.parse(r.stdout) as Array<{ ms: number }>) assert.ok(row.ms < bar, `${JSON.stringify(row)} over ${bar.toFixed(1)} ms`);
 });

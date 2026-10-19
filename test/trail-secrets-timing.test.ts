@@ -12,6 +12,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { secretReason } from "../src/notes/secrets.js";
+import { slowness } from "./machine-speed.js";
 
 const KB = 1024;
 const rep = (s: string, bytes: number) => s.repeat(Math.ceil(bytes / s.length));
@@ -57,7 +58,7 @@ const shapes: [string, string, string | null][] = [
 function timed(text: string): { ms: number; why: string | null } {
   let ms = Infinity;
   let why: string | null = null;
-  for (let i = 0; i < 3 && (i === 0 || (ms >= 50 && ms < 1000)); i++) {
+  for (let i = 0; i < 3 && (i === 0 || (ms >= 50 * slowness() && ms < 1000)); i++) {
     const t0 = performance.now();
     why = secretReason(text);
     ms = Math.min(ms, performance.now() - t0);
@@ -71,7 +72,9 @@ for (const [name, text, why] of shapes) {
   test(`${name} (${Math.round(text.length / KB)} KB) is checked in under 50 ms`, () => {
     const run = timed(text);
     assert.equal(run.why, why, name);
-    assert.ok(run.ms < 50, `${name}: ${run.ms.toFixed(1)} ms`);
+    // 50 ms where the bar was set, scaled to this machine: a backtracking pattern takes seconds here, on any machine.
+    const bar = 50 * slowness();
+    assert.ok(run.ms < bar, `${name}: ${run.ms.toFixed(1)} ms, over ${bar.toFixed(1)} ms`);
   });
 }
 
