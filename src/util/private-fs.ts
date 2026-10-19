@@ -103,6 +103,13 @@ const lstatOrNull = (p: string): Stats | null => {
   }
 };
 const sameFile = (a: Stats, b: Stats) => a.ino === b.ino && a.dev === b.dev;
+const readOrNull = (p: string) => {
+  try {
+    return readFileSync(p, 'utf8');
+  } catch {
+    return null;
+  }
+};
 const aside = (p: string) => `${p}.${process.pid}.${Math.random().toString(16).slice(2, 8)}.stale`;
 /** A file, a link or an empty folder; never a folder's contents. */
 const removeAny = (p: string) => {
@@ -184,15 +191,19 @@ export function withLock<T>(path: string, fn: () => T, waitMs = 200): Locked<T> 
     if (!gone) pause(Math.min(LOCK_POLL_MS, Math.max(1, deadline - Date.now())));
   }
   let mine: Stats | null = null;
+  // The pid, and a nonce: Linux hands a freed inode to the next file at once, so a lock that was taken over
+  // can have our inode number; its text tells it apart.
+  const token = `${process.pid} ${Math.random().toString(16).slice(2, 10)}`;
+  let wrote = false;
   try {
     try { mine = fstatSync(fd); } catch { /* checked below */ }
-    try { writeAll(fd, String(process.pid)); } catch { /* the lock is the file, not its text */ }
+    try { writeAll(fd, token); wrote = true; } catch { /* the lock is the file, not its text */ }
     closeSync(fd);
     return { ok: true, value: fn() };
   } finally {
     // Only our own lock: if fn ran past 10 s and another process took over, the path is theirs now.
     const now = lstatOrNull(lock);
-    if (now && mine && sameFile(now, mine)) {
+    if (now && mine && sameFile(now, mine) && (!wrote || readOrNull(lock) === token)) {
       try { unlinkSync(lock); } catch { /* already gone */ }
     }
   }
