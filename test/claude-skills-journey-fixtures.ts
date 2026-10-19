@@ -13,8 +13,9 @@
  * own rows carry the real checkout as their `cwd`, as Claude Code writes
  * them. Nothing in the hooks is swapped out.
  */
-import { appendFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { accessSync, appendFileSync, constants, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { delimiter, join } from 'node:path';
 import { tmpRepo } from './helpers.js';
 import { jsonl, said, toolResult, toolUse, typed } from './trace-fixtures.js';
 import { main as hooksMain } from '../src/claude/hooks.js';
@@ -36,6 +37,31 @@ export interface Box {
 }
 
 export interface Session { b: Box; sid: string; tx: string; mode: string; payload: Record<string, unknown> }
+
+let noTimeout: string | null = null;
+/**
+ * This process's PATH with no `timeout` on it, for the J16 tests: a folder that holds one (Linux's /usr/bin)
+ * is swapped for a folder of links to everything else in it, so git and the rest still run.
+ */
+export function pathWithoutTimeout(): string {
+  if (noTimeout !== null) return noTimeout;
+  const root = mkdtempSync(join(tmpdir(), 'no-timeout-path-'));
+  const dirs = (process.env.PATH ?? '').split(delimiter).filter(Boolean).map((d, i) => {
+    try {
+      const t = join(d, 'timeout');
+      if (!statSync(t).isFile()) return d;
+      accessSync(t, constants.X_OK);
+    } catch {
+      return d;
+    }
+    const mirror = join(root, String(i));
+    mkdirSync(mirror);
+    for (const name of readdirSync(d)) if (name !== 'timeout') symlinkSync(join(d, name), join(mirror, name));
+    return mirror;
+  });
+  noTimeout = dirs.join(delimiter);
+  return noTimeout;
+}
 
 let boxes = 0;
 
@@ -92,7 +118,7 @@ export function calling(s: Session, iso: string, command: string, id = nextId(s)
 export const resultOf = (s: Session, iso: string, id: string, output: string, isError?: boolean) => grow(s, [toolResult(id, output, isError, where(s, iso))]);
 export const reply = (s: Session, iso: string, text: string) => grow(s, [said(text, where(s, iso))]);
 
-const SAVED_KEYS = ['HOME', 'USERPROFILE', 'TRAIL_HOME', 'CLAUDE_CODE_ENTRYPOINT', 'TRAIL_TEST_NOW', 'CLAUDE_PROJECT_DIR', 'GRAFT_TEST_STDIN', 'GRAFT_TEST_CLI',
+const SAVED_KEYS = ['PATH', 'HOME', 'USERPROFILE', 'TRAIL_HOME', 'CLAUDE_CODE_ENTRYPOINT', 'TRAIL_TEST_NOW', 'CLAUDE_PROJECT_DIR', 'GRAFT_TEST_STDIN', 'GRAFT_TEST_CLI',
   'TRAIL_HOST_FACTS', 'CLAUDE_CONFIG_DIR', 'CI', 'GITHUB_ACTIONS', 'TRAIL_NO_HOOKS', 'TRAIL_LAB_INTERACTIVE', 'TRAIL_INVOKED_AS', 'DO_NOT_TRACK',
   'CODEX_HOME', 'TRAIL_TIER_CODEX', 'GRAFT_POSTHOG_KEY', 'GRAFT_POSTHOG_HOST'];
 

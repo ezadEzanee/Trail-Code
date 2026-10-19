@@ -13,7 +13,7 @@ import { FIXED_DIRS } from '../src/trace/guard-fast.js';
 import { repoKnown } from '../src/trace/known-repo.js';
 import { poolPath } from '../src/trace/pool.js';
 import {
-  agentRuns, at, box, calling, done, finish, one, postBashFailHook, promptHook, release, reply, resultOf, session, SHOP, startHook, stateOf, stopHook, type Box,
+  agentRuns, at, box, calling, done, finish, one, pathWithoutTimeout, postBashFailHook, promptHook, release, reply, resultOf, session, SHOP, startHook, stateOf, stopHook, type Box,
 } from './claude-skills-journey-fixtures.js';
 import { tmpRepo } from './helpers.js';
 
@@ -114,7 +114,7 @@ test('J16: walls and guardrails still apply in a repo Trail never ran in: the fi
     mkdirSync(bin, { recursive: true });
     writeFileSync(join(bin, 'colima'), '#!/bin/sh\nexit 0\n');
     chmodSync(join(bin, 'colima'), 0o755);
-    b.env.PATH = `${bin}${delimiter}${process.env.PATH ?? ''}`;
+    b.env.PATH = `${bin}${delimiter}${pathWithoutTimeout()}`;
     for (const day of [10, 14]) {
       const s = session(b);
       await promptHook(s, at(day, 0), 'run the integration tests');

@@ -15,7 +15,7 @@ import { FIXED_DIRS, SURE_FAIL_REASON } from '../src/trace/guard-fast.js';
 import { sessionPath } from '../src/trace/gate-file.js';
 import { writeEveryRepo } from '../src/notes/every-repo.js';
 import { guardrailLearning } from '../src/notes/guardrails.js';
-import { at, box, done, hook, one, preBashHook, session, type Box, type Session } from './claude-skills-journey-fixtures.js';
+import { at, box, done, hook, one, pathWithoutTimeout, preBashHook, session, type Box, type Session } from './claude-skills-journey-fixtures.js';
 
 /** A machine with a real `timeout` in a system folder of 4.11 can't show a deny: those tests say so and skip. */
 const SYSTEM_TIMEOUT = FIXED_DIRS.filter((d) => !d.startsWith('$HOME')).some((d) => {
@@ -47,7 +47,7 @@ test('the prefilter lets a timeout command with a duration reach the skills part
 });
 
 test('J16: the kept guardrail denies timeout N for the main agent and a subagent, marks each deny, and lets the same command without timeout run', { skip: SYSTEM_TIMEOUT }, async () => {
-  const b = box('guard-j16');
+  const b = box('guard-j16', { env: { PATH: pathWithoutTimeout() } });
   try {
     keepGuardrail(b);
     const s = session(b);
@@ -98,7 +98,7 @@ test('J16: with a timeout on the hook\'s PATH there is no deny; with no guardrai
 });
 
 test('both copies registered: only the copy that answers denies and marks the deny', { skip: SYSTEM_TIMEOUT }, async () => {
-  const b = box('guard-copies');
+  const b = box('guard-copies', { env: { PATH: pathWithoutTimeout() } });
   const argv1 = process.argv[1];
   try {
     keepGuardrail(b);

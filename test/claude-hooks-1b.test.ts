@@ -26,7 +26,7 @@ import { relayLines } from '../src/init/review-screen.js';
 import type { InitItem } from '../src/init/types.js';
 import { factsOf, guardrailCandidate, skillCandidate } from './init-screen-fixtures.js';
 import {
-  agentRuns, at, box, cli, CWD, done, finish, hook, ls, offersLog, one, preBashHook, promptHook, ran, release, reply, sayOfferLines, session, SHOP, skillsKept, startHook, stateOf, typedLine,
+  agentRuns, at, box, cli, CWD, done, finish, hook, ls, offersLog, one, pathWithoutTimeout, preBashHook, promptHook, ran, release, reply, sayOfferLines, session, SHOP, skillsKept, startHook, stateOf, typedLine,
   type Box, type Session,
 } from './claude-skills-journey-fixtures.js';
 import { allowedValue, EVENTS } from '../src/telemetry/contract.js';
@@ -177,7 +177,7 @@ const stopSent = (s: Session, iso: string, said: string) => stopSkillsRun({ ...s
   { HOME: s.b.home, TRAIL_HOME: s.b.trail, CLAUDE_CODE_ENTRYPOINT: 'cli', TRAIL_TEST_NOW: iso, DO_NOT_TRACK: '1', PATH: process.env.PATH });
 
 test('J16 at Stop: each sure-fail deny is counted once, and the same command run without timeout right after counts as avoided', { skip: SYSTEM_TIMEOUT }, async () => {
-  const b = box('h1b-j16-stop');
+  const b = box('h1b-j16-stop', { env: { PATH: pathWithoutTimeout() } });
   try {
     writeEveryRepo(guardrailLearning('timeout-missing', 'every repo', 'on 6 days', new Date(2026, 9, 1)), 'no-timeout.md', { TRAIL_HOME: b.trail });
     const s = session(b);
