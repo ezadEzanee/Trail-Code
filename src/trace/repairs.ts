@@ -224,9 +224,10 @@ export function fixDelta(failed: RunCall, retry: RunCall, between: RunCall[], op
     for (const e of r.env) if (!hadEnv.has(e.name)) out.push({ kind: 'env', name: e.name, text: rel(e.text), callId: retry.id });
     for (const flag of flags) out.push({ kind: 'flag', name: flag.split('=')[0]!, text: rel(flag), callId: retry.id });
     if (!out.length) return [];
-    // The retry as it ran (its cds, filters and echo included) and each delta's own text.
+    // The retry as it ran (its cds, filters and echo included) and each delta's own text. The step rules read it
+    // relativized, as the deltas are: a path inside a checkout that sits in /tmp (Linux CI, a scratch clone) is `./`.
     const whole = rel(retry.cmd!);
-    if (!safe(retry.cmd!) || RISKY_STEP.test(retry.cmd!) || OWN_FILES.test(whole) || out.some((d) => !safe(d.text) || riskyDelta(d))) return [];
+    if (!safe(retry.cmd!) || RISKY_STEP.test(whole) || OWN_FILES.test(whole) || out.some((d) => !safe(d.text) || riskyDelta(d))) return [];
     return out;
   } catch {
     return [];
