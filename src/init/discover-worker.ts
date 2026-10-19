@@ -44,7 +44,7 @@ type Progress = NonNullable<LookBackOpts["onProgress"]>;
 
 /**
  * The no-model look-back (design 4.1 to 4.5) in a worker: discovery, replay, miners, how-tos and candidates, with
- * progress every 2 s. Never rejects: a worker that can't start runs it here; one that dies or overruns its cap by
+ * progress every 2 s. Never rejects: a worker that can't start (or can't load this module) runs it here; one that dies or overruns its cap by
  * 30 s gives an empty look-back that says so.
  */
 export function lookBackOffThread(dir: string, opts: { env: NodeJS.ProcessEnv; capMs: number; skills: boolean;
@@ -83,7 +83,14 @@ export function lookBackOffThread(dir: string, opts: { env: NodeJS.ProcessEnv; c
       }
       if (m?.done) done(m.done);
     });
-    worker.once("error", (e) => done(empty(e instanceof Error ? e.message.slice(0, 80) : "the reader stopped")));
+    worker.once("error", (e) => {
+      // A worker that can't load this module (Node 20 runs a .ts source only on the main thread) never started: run it here.
+      if ((e as NodeJS.ErrnoException | null)?.code === "ERR_UNKNOWN_FILE_EXTENSION") {
+        if (!settled) done(lookBack(dir, opts));
+        return;
+      }
+      done(empty(e instanceof Error ? e.message.slice(0, 80) : "the reader stopped"));
+    });
     worker.once("exit", () => done(empty("the reader stopped")));
   });
 }
