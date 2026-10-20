@@ -170,8 +170,10 @@ test('pi host is detected and writes the AGENTS.md section', () => {
   const agents = readFileSync(join(repo, 'AGENTS.md'), 'utf8');
   assert.equal(agents.match(/graft:start/g)!.length, 1);
   assert.ok(agents.includes('graft ask'));
-  // pi writes no user-level (~/.pi) config at init — only the repo file.
-  assert.deepEqual(r.hooks, []);
+  // pi's active layer is user-level: the hook shim + the event adapter under
+  // ~/.pi, exactly as the Codex host installs its hooks under ~/.codex.
+  assert.deepEqual(r.hooks.map((h) => h.id), ['pi-hook-shim', 'pi-hooks']);
+  assert.ok(existsSync(join(home, '.pi', 'agent', 'extensions', 'graft-hooks.ts')));
 });
 
 // --- CLI: choosing what gets written ------------------------------------
